@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 import time
-import time
-import gc
 import unicodedata
+import re
+import shutil
 import hashlib
 import hmac
 import json
@@ -231,35 +231,26 @@ def require_login() -> None:
             st.rerun()
 
 def read_csv_flexible(source):
-    """Read Market4U CSVs while reducing memory usage."""
+    """Read Market4U CSVs with the encodings normally used by the exports."""
     last_error = None
-
     for encoding in ("utf-8-sig", "utf-8", "latin1"):
         try:
-            df = pd.read_csv(
-                source,
-                sep=";",
-                encoding=encoding,
-                low_memory=False,
-            )
-
-            # Reduz bastante o consumo de memória das colunas de texto
-            for col in df.select_dtypes(include=["object"]).columns:
-                if df[col].nunique(dropna=False) < len(df) * 0.5:
-                    df[col] = df[col].astype("category")
-
-            return df
-
-        except Exception as exc:
+            return pd.read_csv(source, sep=";", encoding=encoding, low_memory=False)
+        except Exception as exc:  # pragma: no cover - fallback behavior
             last_error = exc
             if hasattr(source, "seek"):
                 source.seek(0)
-
     raise last_error
 
 
+@st.cache_data(show_spinner=False)
+def read_path_cached(path_text: str, mtime_ns: int) -> pd.DataFrame:
+    del mtime_ns  # Used only to invalidate Streamlit's cache when the file changes.
+    return read_csv_flexible(Path(path_text))
+
+
 def read_path(path: Path) -> pd.DataFrame:
-    return read_csv_flexible(path)
+    return read_path_cached(str(path), path.stat().st_mtime_ns).copy()
 
 
 def money_to_float(series: pd.Series) -> pd.Series:
@@ -302,66 +293,43 @@ def load_transactions(uploaded_files=None, include_downloads: bool = True):
         sources.extend(discover_download_files(["market4u-cliente_transacoes_*.csv"]))
     if uploaded_files:
         sources.extend(uploaded_files)
+
     frames: list[pd.DataFrame] = []
     failed: list[str] = []
-
     for source_order, source in enumerate(sources):
         try:
             frame = read_path(source) if isinstance(source, Path) else read_csv_flexible(source)
-
             if "Data e hora" not in frame.columns or "ID" not in frame.columns:
-                del frame
-                gc.collect()
                 continue
-
-            frame["Data e hora"] = pd.to_datetime(
-                frame["Data e hora"],
-                errors="coerce"
-            )
-
-            frame = frame.loc[
-                (frame["Data e hora"] >= START_DATE)
-                & (frame["Data e hora"] < TODAY + pd.Timedelta(days=1))
-            ]
-
-            if frame.empty:
-                del frame
-                gc.collect()
-                continue
-
             frame["_fonte"] = source_name(source)
             frame["_ordem_fonte"] = source_order
-
             frames.append(frame)
-
         except Exception:
             failed.append(source_name(source))
 
     if not frames:
         return pd.DataFrame(), set(), failed
 
-    data = pd.concat(
-        frames,
-        ignore_index=True,
-        copy=False,
-    )
+    data = pd.concat(frames, ignore_index=True)
+    data["Data e hora"] = pd.to_datetime(data["Data e hora"], errors="coerce")
+    data = data[
+        (data["Data e hora"] >= START_DATE)
+        & (data["Data e hora"] < TODAY + pd.Timedelta(days=1))
+    ].copy()
 
-    frames.clear()
-    del frames
-    gc.collect()
-data = data.sort_values(["Data e hora", "_ordem_fonte"])
-data = data.drop_duplicates(subset=["ID"], keep="last")
-# Valor recuperado financeiro: use o Subtotal da transação de cobrança.
-# Isso representa o valor efetivamente recebido e evita inflar o recuperado
-# com saldo de carteira/voucher. Mantemos o Total bruto apenas para auditoria.
-data["Valor bruto"] = money_to_float(data.get("Total", pd.Series(index=data.index, dtype=str)))
-data["Valor"] = money_to_float(data.get("Subtotal", data.get("Total", pd.Series(index=data.index, dtype=str))))
-data["Link ID"] = normalize_link_id(
-data.get("ID link de pagamento", pd.Series(index=data.index, dtype=str))
-)
-data["Mês"] = data["Data e hora"].dt.to_period("M").astype(str)
-months_available = set(data["Mês"].dropna().unique())
-return data, months_available, failed
+    data = data.sort_values(["Data e hora", "_ordem_fonte"])
+    data = data.drop_duplicates(subset=["ID"], keep="last")
+    # Valor recuperado financeiro: use o Subtotal da transação de cobrança.
+    # Isso representa o valor efetivamente recebido e evita inflar o recuperado
+    # com saldo de carteira/voucher. Mantemos o Total bruto apenas para auditoria.
+    data["Valor bruto"] = money_to_float(data.get("Total", pd.Series(index=data.index, dtype=str)))
+    data["Valor"] = money_to_float(data.get("Subtotal", data.get("Total", pd.Series(index=data.index, dtype=str))))
+    data["Link ID"] = normalize_link_id(
+        data.get("ID link de pagamento", pd.Series(index=data.index, dtype=str))
+    )
+    data["Mês"] = data["Data e hora"].dt.to_period("M").astype(str)
+    months_available = set(data["Mês"].dropna().unique())
+    return data, months_available, failed
 
 
 def load_links(uploaded_files=None, include_downloads: bool = True):
