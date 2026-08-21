@@ -349,8 +349,8 @@ def load_transactions(uploaded_files=None, include_downloads: bool = True):
     frames.clear()
     del frames
     gc.collect()
-   data = data.sort_values(["Data e hora", "_ordem_fonte"])
-    data = data.drop_duplicates(subset=["ID"], keep="last")
+data = data.sort_values(["Data e hora", "_ordem_fonte"])
+data = data.drop_duplicates(subset=["ID"], keep="last")
     # Valor recuperado financeiro: use o Subtotal da transação de cobrança.
     # Isso representa o valor efetivamente recebido e evita inflar o recuperado
     # com saldo de carteira/voucher. Mantemos o Total bruto apenas para auditoria.
