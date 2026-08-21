@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 import time
+import time
+import gc
 import unicodedata
-import re
-import shutil
 import hashlib
 import hmac
 import json
@@ -302,31 +302,54 @@ def load_transactions(uploaded_files=None, include_downloads: bool = True):
         sources.extend(discover_download_files(["market4u-cliente_transacoes_*.csv"]))
     if uploaded_files:
         sources.extend(uploaded_files)
-
     frames: list[pd.DataFrame] = []
     failed: list[str] = []
+
     for source_order, source in enumerate(sources):
         try:
             frame = read_path(source) if isinstance(source, Path) else read_csv_flexible(source)
+
             if "Data e hora" not in frame.columns or "ID" not in frame.columns:
+                del frame
+                gc.collect()
                 continue
+
+            frame["Data e hora"] = pd.to_datetime(
+                frame["Data e hora"],
+                errors="coerce"
+            )
+
+            frame = frame.loc[
+                (frame["Data e hora"] >= START_DATE)
+                & (frame["Data e hora"] < TODAY + pd.Timedelta(days=1))
+            ]
+
+            if frame.empty:
+                del frame
+                gc.collect()
+                continue
+
             frame["_fonte"] = source_name(source)
             frame["_ordem_fonte"] = source_order
+
             frames.append(frame)
+
         except Exception:
             failed.append(source_name(source))
 
     if not frames:
         return pd.DataFrame(), set(), failed
 
-    data = pd.concat(frames, ignore_index=True)
-    data["Data e hora"] = pd.to_datetime(data["Data e hora"], errors="coerce")
-    data = data[
-        (data["Data e hora"] >= START_DATE)
-        & (data["Data e hora"] < TODAY + pd.Timedelta(days=1))
-    ].copy()
+    data = pd.concat(
+        frames,
+        ignore_index=True,
+        copy=False,
+    )
 
-    data = data.sort_values(["Data e hora", "_ordem_fonte"])
+    frames.clear()
+    del frames
+    gc.collect()
+   data = data.sort_values(["Data e hora", "_ordem_fonte"])
     data = data.drop_duplicates(subset=["ID"], keep="last")
     # Valor recuperado financeiro: use o Subtotal da transação de cobrança.
     # Isso representa o valor efetivamente recebido e evita inflar o recuperado
