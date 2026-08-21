@@ -351,17 +351,17 @@ def load_transactions(uploaded_files=None, include_downloads: bool = True):
     gc.collect()
 data = data.sort_values(["Data e hora", "_ordem_fonte"])
 data = data.drop_duplicates(subset=["ID"], keep="last")
-    # Valor recuperado financeiro: use o Subtotal da transação de cobrança.
-    # Isso representa o valor efetivamente recebido e evita inflar o recuperado
-    # com saldo de carteira/voucher. Mantemos o Total bruto apenas para auditoria.
-    data["Valor bruto"] = money_to_float(data.get("Total", pd.Series(index=data.index, dtype=str)))
-    data["Valor"] = money_to_float(data.get("Subtotal", data.get("Total", pd.Series(index=data.index, dtype=str))))
-    data["Link ID"] = normalize_link_id(
-        data.get("ID link de pagamento", pd.Series(index=data.index, dtype=str))
-    )
-    data["Mês"] = data["Data e hora"].dt.to_period("M").astype(str)
-    months_available = set(data["Mês"].dropna().unique())
-    return data, months_available, failed
+# Valor recuperado financeiro: use o Subtotal da transação de cobrança.
+# Isso representa o valor efetivamente recebido e evita inflar o recuperado
+# com saldo de carteira/voucher. Mantemos o Total bruto apenas para auditoria.
+data["Valor bruto"] = money_to_float(data.get("Total", pd.Series(index=data.index, dtype=str)))
+data["Valor"] = money_to_float(data.get("Subtotal", data.get("Total", pd.Series(index=data.index, dtype=str))))
+data["Link ID"] = normalize_link_id(
+data.get("ID link de pagamento", pd.Series(index=data.index, dtype=str))
+)
+data["Mês"] = data["Data e hora"].dt.to_period("M").astype(str)
+months_available = set(data["Mês"].dropna().unique())
+return data, months_available, failed
 
 
 def load_links(uploaded_files=None, include_downloads: bool = True):
