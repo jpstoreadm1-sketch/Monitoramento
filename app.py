@@ -231,26 +231,35 @@ def require_login() -> None:
             st.rerun()
 
 def read_csv_flexible(source):
-    """Read Market4U CSVs with the encodings normally used by the exports."""
+    """Read Market4U CSVs while reducing memory usage."""
     last_error = None
+
     for encoding in ("utf-8-sig", "utf-8", "latin1"):
         try:
-            return pd.read_csv(source, sep=";", encoding=encoding, low_memory=False)
-        except Exception as exc:  # pragma: no cover - fallback behavior
+            df = pd.read_csv(
+                source,
+                sep=";",
+                encoding=encoding,
+                low_memory=False,
+            )
+
+            # Reduz bastante o consumo de memória das colunas de texto
+            for col in df.select_dtypes(include=["object"]).columns:
+                if df[col].nunique(dropna=False) < len(df) * 0.5:
+                    df[col] = df[col].astype("category")
+
+            return df
+
+        except Exception as exc:
             last_error = exc
             if hasattr(source, "seek"):
                 source.seek(0)
+
     raise last_error
 
 
-@st.cache_data(show_spinner=False)
-def read_path_cached(path_text: str, mtime_ns: int) -> pd.DataFrame:
-    del mtime_ns  # Used only to invalidate Streamlit's cache when the file changes.
-    return read_csv_flexible(Path(path_text))
-
-
 def read_path(path: Path) -> pd.DataFrame:
-    return read_path_cached(str(path), path.stat().st_mtime_ns).copy()
+    return read_csv_flexible(path)
 
 
 def money_to_float(series: pd.Series) -> pd.Series:
