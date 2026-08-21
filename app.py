@@ -361,7 +361,7 @@ data.get("ID link de pagamento", pd.Series(index=data.index, dtype=str))
 )
 data["Mês"] = data["Data e hora"].dt.to_period("M").astype(str)
 months_available = set(data["Mês"].dropna().unique())
-    return data, months_available, failed
+return data, months_available, failed
 
 
 def load_links(uploaded_files=None, include_downloads: bool = True):
