@@ -11,6 +11,7 @@ import hmac
 import json
 import secrets
 from datetime import datetime
+import os
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -110,12 +111,26 @@ def _verify_password(password: str, record: dict) -> bool:
 
 
 def _load_auth() -> dict:
-    if not AUTH_FILE.exists():
-        return {}
-    try:
-        return json.loads(AUTH_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+    users_config = [
+        ("fernanda", "Fernanda", "SENHA_FERNANDA", "admin"),
+        ("joao paulo", "João Paulo", "SENHA_JOAO_PAULO", "full"),
+        ("kawany", "Kawany", "SENHA_KAWANY", "full"),
+        ("camilli", "Camilli", "SENHA_CAMILLI", "devedores"),
+        ("vitoria", "Vitoria", "SENHA_VITORIA", "devedores"),
+    ]
+
+    users = {}
+
+    for username, display, env_name, role in users_config:
+        password = os.getenv(env_name, "")
+        if password:
+            users[username] = {
+                "display": display,
+                "role": role,
+                **_hash_password(password),
+            }
+
+    return {"users": users}
 
 
 def _save_auth(data: dict) -> None:
