@@ -1236,7 +1236,7 @@ else:
             daily_chart.update_layout(height=420, xaxis_title="", yaxis_title="Carrinhos/links")
             st.plotly_chart(daily_chart, use_container_width=True)
 
-elif page == "Devedores":
+if page == "Devedores":
 st.subheader("Pessoas que ainda precisam ser cobradas")
 st.caption(
     "São considerados apenas links pendentes de Fernanda, Camilli, Vitoria, Kawany, Lorrany e Thais. "
