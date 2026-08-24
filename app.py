@@ -18,6 +18,18 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+def br1(value):
+    try:
+        value = float(value)
+        return (
+            f"R$ {value:,.2f}"
+            .replace(",", "X")
+            .replace(".", ",")
+            .replace("X", ".")
+        )
+    except (TypeError, ValueError):
+        return "R$ 0,00"
+
 
 BASE = Path(__file__).resolve().parent
 RAW = BASE / "data" / "raw"
