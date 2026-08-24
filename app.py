@@ -1682,6 +1682,129 @@ if not productivity_links.empty:
         ]
         .dropna()
     )
+if page == "Produtividade":
+    st.subheader("Produtividade por colaboradora")
+        colaboradores_prod = [
+        "Fernanda",
+        "Camilli",
+        "Vitória",
+        "Kawany",
+        "Lorrany",
+        "Thais",
+    ]
+
+    prod = productivity_links.copy()
+
+    if prod.empty:
+        st.warning("Nenhum dado de produtividade encontrado.")
+    else:
+        # Mantém somente as colaboradoras da operação
+        prod = prod[
+            prod["Colaboradora"].astype(str).isin(colaboradores_prod)
+        ].copy()
+
+        # Filtro de mês criado automaticamente conforme os dados
+        meses_prod = sorted(
+            prod["Mês"].dropna().astype(str).unique().tolist()
+        )
+
+        meses_selecionados = st.multiselect(
+            "Mês",
+            meses_prod,
+            default=meses_prod,
+            key="filtro_mes_produtividade",
+        )
+
+        if meses_selecionados:
+            prod = prod[
+                prod["Mês"].astype(str).isin(meses_selecionados)
+            ].copy()
+
+        # Resumo por colaboradora
+        resumo_prod = (
+            prod.groupby("Colaboradora", as_index=False)
+            .agg(
+                Carrinhos=("Link ID", "count"),
+                Recuperados=(
+                    "Situação reconciliada",
+                    lambda x: (x == "Pago").sum(),
+                ),
+                Pendentes=(
+                    "Situação reconciliada",
+                    lambda x: (x == "Pendente").sum(),
+                ),
+                Cancelados=(
+                    "Situação reconciliada",
+                    lambda x: (x == "Cancelado").sum(),
+                ),
+                Valor_recuperado=("Valor_num", "sum"),
+            )
+        )
+
+        # Garante que todas apareçam mesmo quando estiverem zeradas
+        base_colaboradoras = pd.DataFrame(
+            {"Colaboradora": colaboradores_prod}
+        )
+
+        resumo_prod = base_colaboradoras.merge(
+            resumo_prod,
+            on="Colaboradora",
+            how="left",
+        ).fillna(0)
+
+        resumo_prod["Taxa de recuperação"] = (
+            resumo_prod["Recuperados"]
+            / resumo_prod["Carrinhos"].replace(0, pd.NA)
+            * 100
+        ).fillna(0)
+
+        total_carrinhos = int(resumo_prod["Carrinhos"].sum())
+        total_recuperados = int(resumo_prod["Recuperados"].sum())
+        total_pendentes = int(resumo_prod["Pendentes"].sum())
+        total_valor = float(resumo_prod["Valor_recuperado"].sum())
+
+        taxa_geral = (
+            total_recuperados / total_carrinhos * 100
+            if total_carrinhos
+            else 0
+        )
+
+        c1, c2, c3, c4, c5 = st.columns(5)
+
+        c1.metric("Carrinhos/links", total_carrinhos)
+        c2.metric("Recuperados", total_recuperados)
+        c3.metric("Pendentes", total_pendentes)
+        c4.metric("Valor recuperado", brl(total_valor))
+        c5.metric("Taxa de recuperação", f"{taxa_geral:.1f}%".replace(".", ","))
+
+        tabela_prod = resumo_prod.copy()
+
+        tabela_prod["Valor recuperado"] = (
+            tabela_prod["Valor_recuperado"].apply(brl)
+        )
+
+        tabela_prod["Taxa de recuperação"] = (
+            tabela_prod["Taxa de recuperação"]
+            .map(lambda x: f"{x:.1f}%".replace(".", ","))
+        )
+
+        tabela_prod = tabela_prod[
+            [
+                "Colaboradora",
+                "Carrinhos",
+                "Recuperados",
+                "Pendentes",
+                "Cancelados",
+                "Valor recuperado",
+                "Taxa de recuperação",
+            ]
+        ]
+
+        st.dataframe(
+            tabela_prod,
+            use_container_width=True,
+            hide_index=True,
+        )
 if page == "Devedores":
     st.subheader("Pessoas que ainda precisam ser cobradas")
     st.caption(
