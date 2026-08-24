@@ -669,107 +669,417 @@ st.caption(
     "• dados anteriores a 2026 são ignorados"
 )
 
-# Detalhamento dos carrinhos recuperados: somente eventos de pagamento de cobrança
-# vinculados a um ID de link. O total financeiro oficial vem de Vendas Consolidadas.
-type_normalized = transactions["Tipo"].astype(str).str.strip().str.casefold()
-recovery_type = type_normalized.str.startswith("pagamento efetuada (cobrança)")
-has_link_id = transactions["Link ID"].notna()
-recovered = transactions[recovery_type & has_link_id].copy()
-recovered["Taxa"] = (
-    recovered.get("Possui taxa de cobrança", "--")
+# ============================================================
+# CONCILIAÇÃO DE CARRINHOS / COBRANÇAS
+# Regra oficial:
+# cada "Pagamento efetuada (cobrança)" = 1 carrinho recuperado.
+# O arquivo de links identifica colaboradora, cliente e status.
+# O valor recuperado vem do Subtotal da transação.
+# ============================================================
+
+type_normalized = (
+    transactions["Tipo"]
     .astype(str)
     .str.strip()
     .map(strip_accents)
-    .map({"sim": "Com taxa", "nao": "Sem taxa"})
+)
+
+recovery_type = type_normalized.eq(
+    strip_accents("Pagamento efetuada (cobrança)")
+)
+
+# Todo pagamento de cobrança é um carrinho recuperado.
+recovered = transactions[recovery_type].copy()
+
+recovered["Valor_recuperado"] = money_to_float(
+    recovered.get(
+        "Subtotal",
+        recovered.get(
+            "Total",
+            pd.Series(index=recovered.index, dtype=str),
+        ),
+    )
+)
+
+recovered["Link ID"] = normalize_link_id(
+    recovered.get(
+        "ID link de pagamento",
+        pd.Series(index=recovered.index, dtype=str),
+    )
+)
+
+recovered["Data_pagamento"] = pd.to_datetime(
+    recovered["Data e hora"],
+    errors="coerce",
+)
+
+recovered["Mês pagamento"] = (
+    recovered["Data_pagamento"]
+    .dt.to_period("M")
+    .astype(str)
+)
+
+# Classificação da taxa
+recovered["Taxa"] = (
+    recovered
+    .get(
+        "Possui taxa de cobrança",
+        pd.Series("--", index=recovered.index),
+    )
+    .astype(str)
+    .str.strip()
+    .map(strip_accents)
+    .map({
+        "sim": "Com taxa",
+        "nao": "Sem taxa",
+    })
     .fillna("Não informado")
 )
-recovered["Mês pagamento"] = recovered["Data e hora"].dt.to_period("M").astype(str)
 
-internal_recovery_rows = transactions[recovery_type & ~has_link_id].copy()
-canceled_ids = set(
-    transactions.loc[
-        type_normalized.str.startswith("cobrança cancelado")
-        | type_normalized.str.startswith("cobranca cancelado"),
+# ------------------------------------------------------------
+# PREPARAR BASE DE LINKS
+# ------------------------------------------------------------
+
+links_prod = links.copy()
+
+if not links_prod.empty:
+
+    links_prod["Link ID"] = normalize_link_id(
+        links_prod["ID"]
+    )
+
+    links_prod["Data"] = pd.to_datetime(
+        links_prod["Data"],
+        errors="coerce",
+    )
+
+    if "Data pagamento" in links_prod.columns:
+        links_prod["Data pagamento"] = pd.to_datetime(
+            links_prod["Data pagamento"],
+            errors="coerce",
+        )
+
+    links_prod["Valor_num"] = money_to_float(
+        links_prod.get(
+            "Valor",
+            pd.Series(index=links_prod.index, dtype=str),
+        )
+    )
+
+    links_prod["Valor_pago_num"] = money_to_float(
+        links_prod.get(
+            "Valor pago",
+            pd.Series(index=links_prod.index, dtype=str),
+        )
+    )
+
+    links_prod["_usuario_norm"] = (
+        links_prod
+        .get(
+            "Usuário",
+            pd.Series("", index=links_prod.index),
+        )
+        .map(strip_accents)
+    )
+
+    # Identifica a colaboradora
+    links_prod["Colaboradora"] = (
+        links_prod["_usuario_norm"]
+        .map(USER_DISPLAY)
+    )
+
+    # Se aparecer outro usuário, mantém o nome original
+    links_prod["Colaboradora"] = (
+        links_prod["Colaboradora"]
+        .fillna(
+            links_prod.get(
+                "Usuário",
+                pd.Series("Não identificado", index=links_prod.index),
+            )
+        )
+        .replace({
+            "": "Não identificado",
+            "--": "Não identificado",
+        })
+        .fillna("Não identificado")
+    )
+
+    links_prod["Status_norm"] = (
+        links_prod["Status"]
+        .astype(str)
+        .str.strip()
+        .map(strip_accents)
+    )
+
+else:
+    links_prod = pd.DataFrame()
+
+
+# ------------------------------------------------------------
+# ATRIBUIR PAGAMENTOS ÀS COLABORADORAS
+# ------------------------------------------------------------
+
+recovery_events = recovered.copy()
+
+if not links_prod.empty:
+
+    link_info = (
+        links_prod
+        .sort_values("Data")
+        .drop_duplicates(
+            subset=["Link ID"],
+            keep="last",
+        )
+    )
+
+    link_columns = [
         "Link ID",
-    ].dropna()
+        "Colaboradora",
+        "Usuário",
+        "Status",
+        "Nome",
+        "Valor_num",
+        "Valor_pago_num",
+        "Data",
+    ]
+
+    link_columns = [
+        c for c in link_columns
+        if c in link_info.columns
+    ]
+
+    recovery_events = recovery_events.merge(
+        link_info[link_columns],
+        on="Link ID",
+        how="left",
+        suffixes=("", "_link"),
+    )
+
+else:
+    recovery_events["Colaboradora"] = "Não identificado"
+
+
+recovery_events["Colaboradora"] = (
+    recovery_events
+    .get(
+        "Colaboradora",
+        pd.Series(
+            "Não identificado",
+            index=recovery_events.index,
+        ),
+    )
+    .fillna("Não identificado")
 )
-paid_ids = set(recovered["Link ID"].dropna())
 
-pending = pd.DataFrame()
-if not links.empty:
-    pending = links[links["Status"].astype(str).str.strip().str.casefold().eq("pendente")].copy()
-    if "Usuário" in pending.columns:
-        normalized_users = pending["Usuário"].map(strip_accents)
-        pending = pending[normalized_users.isin(MONITORED_USERS)].copy()
-    pending = pending[~pending["Link ID"].isin(paid_ids | canceled_ids)].copy()
-    pending["Dias em aberto"] = (TODAY - pending["Data"].dt.normalize()).dt.days.clip(lower=0)
+# Cliente: prioriza o cliente da transação
+recovery_events["Cliente"] = recovery_events.get(
+    "Nome Cliente",
+    pd.Series("", index=recovery_events.index),
+)
 
-# Base de produtividade: cada link criado representa um carrinho/cobrança trabalhada.
-# O pagamento é reconciliado pelo ID do link para não contar um cliente como pendente
-# depois que o pagamento já apareceu nas transações.
-productivity_links = pd.DataFrame()
-if not links.empty and "Usuário" in links.columns:
-    productivity_links = links.copy()
-    productivity_links["_usuario_norm"] = productivity_links["Usuário"].map(strip_accents)
-    productivity_links = productivity_links[
-        productivity_links["_usuario_norm"].isin(MONITORED_USERS)
+if "Nome" in recovery_events.columns:
+
+    recovery_events["Cliente"] = (
+        recovery_events["Cliente"]
+        .replace({"--": "", "nan": ""})
+        .fillna("")
+    )
+
+    missing_client = (
+        recovery_events["Cliente"]
+        .astype(str)
+        .str.strip()
+        .eq("")
+    )
+
+    recovery_events.loc[
+        missing_client,
+        "Cliente",
+    ] = recovery_events.loc[
+        missing_client,
+        "Nome",
+    ]
+
+
+# Condomínio vem da transação
+recovery_events["Condomínio"] = recovery_events.get(
+    "PDX",
+    pd.Series(
+        "(Não identificado)",
+        index=recovery_events.index,
+    ),
+)
+
+recovery_events["Condomínio filtro"] = (
+    recovery_events["Condomínio"]
+    .fillna("(Não identificado)")
+)
+
+recovery_events["Situação reconciliada"] = "Pago"
+
+recovery_events["Data referência"] = (
+    recovery_events["Data_pagamento"]
+)
+
+recovery_events["Mês"] = (
+    recovery_events["Data referência"]
+    .dt.to_period("M")
+    .astype(str)
+)
+
+recovery_events["Dia"] = (
+    recovery_events["Data referência"]
+    .dt.normalize()
+)
+
+
+# ------------------------------------------------------------
+# PENDENTES E CANCELADOS
+# ------------------------------------------------------------
+
+open_links = pd.DataFrame()
+
+if not links_prod.empty:
+
+    non_paid = links_prod[
+        links_prod["Status_norm"].isin(
+            [
+                "pendente",
+                "aguardando pagamento",
+                "cancelado",
+            ]
+        )
     ].copy()
-    productivity_links["Colaboradora"] = productivity_links["_usuario_norm"].map(USER_DISPLAY)
-    productivity_links["Situação reconciliada"] = "Pendente"
-    productivity_links.loc[
-        productivity_links["Link ID"].isin(canceled_ids), "Situação reconciliada"
-    ] = "Cancelado"
-    productivity_links.loc[
-        productivity_links["Link ID"].isin(paid_ids), "Situação reconciliada"
-    ] = "Pago"
 
-    recovered_sorted = recovered.sort_values("Data e hora").copy()
-    recovered_sums = (
-        recovered_sorted.groupby("Link ID", dropna=False)["Valor"]
-        .sum()
-        .rename("Valor_recuperado")
-        .reset_index()
+    non_paid["Situação reconciliada"] = (
+        non_paid["Status_norm"]
+        .map({
+            "pendente": "Pendente",
+            "aguardando pagamento": "Pendente",
+            "cancelado": "Cancelado",
+        })
     )
-    latest_recovery = recovered_sorted.drop_duplicates(subset=["Link ID"], keep="last")
-    recovery_info_cols = ["Link ID", "Data e hora", "Taxa"]
-    for optional_col in ["PDX", "Nome Cliente"]:
-        if optional_col in latest_recovery.columns:
-            recovery_info_cols.append(optional_col)
-    latest_recovery = latest_recovery[recovery_info_cols].rename(
-        columns={
-            "Data e hora": "Data_pagamento",
-            "PDX": "Condomínio",
-            "Nome Cliente": "Cliente_pago",
-            "Taxa": "Classificação taxa",
-        }
-    )
-    recovered_by_link = recovered_sums.merge(latest_recovery, on="Link ID", how="left")
-    productivity_links = productivity_links.merge(recovered_by_link, on="Link ID", how="left")
-    productivity_links["Valor_recuperado"] = productivity_links["Valor_recuperado"].fillna(0.0)
-    productivity_links["Cliente"] = productivity_links.get("Nome", pd.Series(index=productivity_links.index, dtype=str))
-    if "Cliente_pago" in productivity_links.columns:
-        productivity_links["Cliente"] = productivity_links["Cliente_pago"].fillna(productivity_links["Cliente"])
-    if "Condomínio" not in productivity_links.columns:
-        productivity_links["Condomínio"] = pd.NA
-    productivity_links["Condomínio filtro"] = productivity_links["Condomínio"].fillna("(Não identificado)")
 
-    # NÃO misturar períodos: carrinho pendente/cancelado pertence ao mês de criação;
-    # carrinho pago pertence ao mês em que o pagamento realmente aconteceu.
-    productivity_links["Mês criação"] = productivity_links["Data"].dt.to_period("M").astype(str)
-    productivity_links["Mês pagamento"] = productivity_links["Data_pagamento"].dt.to_period("M").astype(str)
-    paid_with_date = productivity_links["Situação reconciliada"].eq("Pago") & productivity_links["Data_pagamento"].notna()
-    productivity_links["Data referência"] = productivity_links["Data"]
-    productivity_links.loc[paid_with_date, "Data referência"] = productivity_links.loc[paid_with_date, "Data_pagamento"]
-    productivity_links["Mês"] = productivity_links["Mês criação"]
-    productivity_links.loc[paid_with_date, "Mês"] = productivity_links.loc[paid_with_date, "Mês pagamento"]
-    productivity_links["Dia"] = productivity_links["Data referência"].dt.normalize()
+    non_paid["Cliente"] = non_paid.get(
+        "Nome",
+        pd.Series("", index=non_paid.index),
+    )
+
+    non_paid["Valor_recuperado"] = 0.0
+
+    non_paid["Data referência"] = non_paid["Data"]
+
+    non_paid["Mês"] = (
+        non_paid["Data referência"]
+        .dt.to_period("M")
+        .astype(str)
+    )
+
+    non_paid["Dia"] = (
+        non_paid["Data referência"]
+        .dt.normalize()
+    )
+
+    if "Condomínio" not in non_paid.columns:
+        non_paid["Condomínio"] = "(Não identificado)"
+
+    non_paid["Condomínio filtro"] = (
+        non_paid["Condomínio"]
+        .fillna("(Não identificado)")
+    )
+
+    open_links = non_paid
+
+
+# ------------------------------------------------------------
+# PRODUTIVIDADE FINAL
+# Pago = transação real
+# Pendente/Cancelado = arquivo de links
+# ------------------------------------------------------------
+
+productivity_links = pd.concat(
+    [
+        recovery_events,
+        open_links,
+    ],
+    ignore_index=True,
+    sort=False,
+)
+
+productivity_links["Colaboradora"] = (
+    productivity_links["Colaboradora"]
+    .fillna("Não identificado")
+)
+
+if "Valor_num" not in productivity_links.columns:
+    productivity_links["Valor_num"] = 0.0
+
+productivity_links["Valor_num"] = (
+    pd.to_numeric(
+        productivity_links["Valor_num"],
+        errors="coerce",
+    )
+    .fillna(0.0)
+)
+
+# Nos pagos, o valor correto vem do Subtotal da transação
+paid_mask = (
+    productivity_links["Situação reconciliada"]
+    .eq("Pago")
+)
+
+productivity_links.loc[
+    paid_mask,
+    "Valor_num",
+] = productivity_links.loc[
+    paid_mask,
+    "Valor_recuperado",
+]
+
+
+# ------------------------------------------------------------
+# PENDÊNCIAS / DEVEDORES
+# ------------------------------------------------------------
+
+pending = productivity_links[
+    productivity_links["Situação reconciliada"]
+    .eq("Pendente")
+].copy()
+
+if not pending.empty:
+
+    pending["Dias em aberto"] = (
+        TODAY
+        - pending["Data referência"].dt.normalize()
+    ).dt.days.clip(lower=0)
+
+
+# IDs pagos
+paid_ids = set(
+    recovery_events["Link ID"]
+    .dropna()
+)
+
+# IDs cancelados
+canceled_ids = set()
+
+if not links_prod.empty:
+
+       canceled_ids = set(
+        links_prod.loc[
+            links_prod["Status_norm"].eq("cancelado"),
+            "Link ID",
+        ].dropna()
+    )
 
 month_periods = pd.period_range(START_DATE, data_end, freq="M")
 month_codes = month_periods.astype(str)
+
 month_labels = {
     code: pd.Period(code, freq="M").strftime("%b/%y").replace("Jan", "Jan")
     for code in month_codes
 }
+
 # Portuguese labels independent of operating-system locale.
 month_names_pt = {
     1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
