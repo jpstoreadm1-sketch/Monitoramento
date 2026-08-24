@@ -182,10 +182,11 @@ def _load_access_log() -> pd.DataFrame:
         return pd.DataFrame(columns=cols)
 
 
-def require_login() -> None:
+
+    def require_login() -> None:
     auth = _load_auth()
 
-        if not auth.get("users"):
+    if not auth.get("users"):
         st.title("🔐 Configurar acesso ao Monitoramento")
         st.info(
             "Primeiro acesso: configure os acessos. "
@@ -194,6 +195,7 @@ def require_login() -> None:
 
         with st.form("first_setup"):
             p_fernanda = st.text_input("Senha de Fernanda", type="password")
+        
             pc_fernanda = st.text_input("Confirmar senha de Fernanda", type="password")
 
             p_joao = st.text_input("Senha de João Paulo", type="password")
@@ -256,9 +258,17 @@ def require_login() -> None:
                     }
                 }
 
-                _save_auth(data)
-                st.success("Todos os acessos foram criados com sucesso.")
-                st.rerun()
+            _save_auth(data)
+            st.success("Todos os acessos foram criados com sucesso.")
+            st.rerun()
+
+        st.stop()
+
+    if not st.session_state.get("authenticated"):
+
+        st.stop()
+
+    if not st.session_state.get("authenticated"):
 
         st.stop()
 
