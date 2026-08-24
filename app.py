@@ -1237,10 +1237,10 @@ else:
             st.plotly_chart(daily_chart, use_container_width=True)
 
 if page == "Devedores":
-st.subheader("Pessoas que ainda precisam ser cobradas")
-st.caption(
-    "São considerados apenas links pendentes de Fernanda, Camilli, Vitoria, Kawany, Lorrany e Thais. "
-    "Links encontrados como pagos ou cancelados nos arquivos de transações são retirados."
+    st.subheader("Pessoas que ainda precisam ser cobradas")
+    st.caption(
+        "São considerados apenas links pendentes de Fernanda, Camilli, Vitoria, Kawany, Lorrany e Thais. "
+        "Links encontrados como pagos ou cancelados nos arquivos de transações são retirados."
 )
 
 if pending.empty:
