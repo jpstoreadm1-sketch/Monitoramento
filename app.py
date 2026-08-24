@@ -325,16 +325,16 @@ def require_login() -> None:
             f"Conectado como **{st.session_state.get('login_display', '')}**"
         )
 
-              if st.button("Sair", use_container_width=True):
-            for k in (
-                "authenticated",
-                "login_user",
-                "login_display",
-                "login_role",
-            ):
-                st.session_state.pop(k, None)
+          if st.button("Sair", use_container_width=True):
+        for k in (
+            "authenticated",
+            "login_user",
+            "login_display",
+            "login_role",
+        ):
+            st.session_state.pop(k, None)
 
-            st.rerun()
+        st.rerun()
 
 
 def read_csv_flexible(source):
