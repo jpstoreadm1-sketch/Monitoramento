@@ -1684,7 +1684,7 @@ if not productivity_links.empty:
     )
 if page == "Produtividade":
     st.subheader("Produtividade por colaboradora")
-        colaboradores_prod = [
+    colaboradores_prod = [
         "Fernanda",
         "Camilli",
         "Vitória",
