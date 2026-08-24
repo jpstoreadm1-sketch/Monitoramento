@@ -325,7 +325,7 @@ def require_login() -> None:
             f"Conectado como **{st.session_state.get('login_display', '')}**"
         )
 
-        if st.button("Sair", use_container_width=True):
+              if st.button("Sair", use_container_width=True):
             for k in (
                 "authenticated",
                 "login_user",
@@ -335,16 +335,7 @@ def require_login() -> None:
                 st.session_state.pop(k, None)
 
             st.rerun()
-            else:
-                st.error("Usuário ou senha inválidos.")
-        st.stop()
 
-    with st.sidebar:
-        st.caption(f"Conectado como **{st.session_state.get('login_display', '')}**")
-        if st.button("Sair", use_container_width=True):
-            for k in ("authenticated", "login_user", "login_display", "login_role"):
-                st.session_state.pop(k, None)
-            st.rerun()
 
 def read_csv_flexible(source):
     """Read Market4U CSVs with the encodings normally used by the exports."""
