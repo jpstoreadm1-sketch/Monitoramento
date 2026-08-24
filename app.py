@@ -1700,7 +1700,7 @@ if page == "Produtividade":
     else:
         # Mantém somente as colaboradoras da operação
         prod = prod[
-            prod["Colaboradora"].astype(str).isin(colaboradores_prod)
+        prod["Colaboradora"].astype(str).isin(colaboradores_prod)
         ].copy()
 
         # Filtro de mês criado automaticamente conforme os dados
