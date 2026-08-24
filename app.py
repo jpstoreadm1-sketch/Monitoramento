@@ -111,12 +111,22 @@ def _verify_password(password: str, record: dict) -> bool:
 
 
 def _load_auth() -> dict:
+    # Primeiro tenta carregar os acessos já configurados no primeiro acesso
+    if AUTH_FILE.exists():
+        try:
+            data = json.loads(AUTH_FILE.read_text(encoding="utf-8"))
+            if data.get("users"):
+                return data
+        except Exception:
+            pass
+
+    # Se não houver arquivo de autenticação, tenta usar variáveis de ambiente
     users_config = [
         ("fernanda", "Fernanda", "SENHA_FERNANDA", "admin"),
         ("joao paulo", "João Paulo", "SENHA_JOAO_PAULO", "full"),
         ("kawany", "Kawany", "SENHA_KAWANY", "full"),
         ("camilli", "Camilli", "SENHA_CAMILLI", "devedores"),
-        ("vitoria", "Vitoria", "SENHA_VITORIA", "devedores"),
+        ("vitoria", "Vitória", "SENHA_VITORIA", "devedores"),
     ]
 
     users = {}
@@ -175,30 +185,81 @@ def _load_access_log() -> pd.DataFrame:
 def require_login() -> None:
     auth = _load_auth()
 
-    if not auth.get("users"):
+        if not auth.get("users"):
         st.title("🔐 Configurar acesso ao Monitoramento")
-        st.info("Primeiro acesso: configure os acessos. As senhas são armazenadas somente como hash, não em texto aberto.")
+        st.info(
+            "Primeiro acesso: configure os acessos. "
+            "As senhas são armazenadas somente como hash, não em texto aberto."
+        )
+
         with st.form("first_setup"):
-            p1 = st.text_input("Senha de João Paulo", type="password")
-            p1c = st.text_input("Confirmar senha de João Paulo", type="password")
-            p2 = st.text_input("Senha de Kawany", type="password")
-            p2c = st.text_input("Confirmar senha de Kawany", type="password")
+            p_fernanda = st.text_input("Senha de Fernanda", type="password")
+            pc_fernanda = st.text_input("Confirmar senha de Fernanda", type="password")
+
+            p_joao = st.text_input("Senha de João Paulo", type="password")
+            pc_joao = st.text_input("Confirmar senha de João Paulo", type="password")
+
+            p_kawany = st.text_input("Senha de Kawany", type="password")
+            pc_kawany = st.text_input("Confirmar senha de Kawany", type="password")
+
+            p_camilli = st.text_input("Senha de Camilli", type="password")
+            pc_camilli = st.text_input("Confirmar senha de Camilli", type="password")
+
+            p_vitoria = st.text_input("Senha de Vitória", type="password")
+            pc_vitoria = st.text_input("Confirmar senha de Vitória", type="password")
+
             submit = st.form_submit_button("Salvar acessos")
+
         if submit:
-            if len(p1) < 6 or len(p2) < 6:
-                st.error("Use senhas com pelo menos 6 caracteres.")
-            elif p1 != p1c or p2 != p2c:
-                st.error("As confirmações de senha não coincidem.")
+            senhas = {
+                "fernanda": (p_fernanda, pc_fernanda),
+                "joao paulo": (p_joao, pc_joao),
+                "kawany": (p_kawany, pc_kawany),
+                "camilli": (p_camilli, pc_camilli),
+                "vitoria": (p_vitoria, pc_vitoria),
+            }
+
+            if any(len(senha) < 6 for senha, confirmacao in senhas.values()):
+                st.error("Todas as senhas devem ter pelo menos 6 caracteres.")
+
+            elif any(senha != confirmacao for senha, confirmacao in senhas.values()):
+                st.error("Uma ou mais confirmações de senha não coincidem.")
+
             else:
                 data = {
                     "users": {
-                        "joao paulo": {"display": "João Paulo", **_hash_password(p1)},
-                        "kawany": {"display": "Kawany", **_hash_password(p2)},
+                        "fernanda": {
+                            "display": "Fernanda",
+                            "role": "admin",
+                            **_hash_password(p_fernanda),
+                        },
+                        "joao paulo": {
+                            "display": "João Paulo",
+                            "role": "full",
+                            **_hash_password(p_joao),
+                        },
+                        "kawany": {
+                            "display": "Kawany",
+                            "role": "full",
+                            **_hash_password(p_kawany),
+                        },
+                        "camilli": {
+                            "display": "Camilli",
+                            "role": "devedores",
+                            **_hash_password(p_camilli),
+                        },
+                        "vitoria": {
+                            "display": "Vitória",
+                            "role": "devedores",
+                            **_hash_password(p_vitoria),
+                        },
                     }
                 }
+
                 _save_auth(data)
-                st.success("Acessos criados. Faça login para continuar.")
+                st.success("Todos os acessos foram criados com sucesso.")
                 st.rerun()
+
         st.stop()
 
     if not st.session_state.get("authenticated"):
