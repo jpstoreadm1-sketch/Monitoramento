@@ -1237,85 +1237,85 @@ else:
             st.plotly_chart(daily_chart, use_container_width=True)
 
 elif page == "Devedores":
-    st.subheader("Pessoas que ainda precisam ser cobradas")
-    st.caption(
-        "São considerados apenas links pendentes de Fernanda, Camilli, Vitoria, Kawany, Lorrany e Thais. "
-        "Links encontrados como pagos ou cancelados nos arquivos de transações são retirados."
+st.subheader("Pessoas que ainda precisam ser cobradas")
+st.caption(
+    "São considerados apenas links pendentes de Fernanda, Camilli, Vitoria, Kawany, Lorrany e Thais. "
+    "Links encontrados como pagos ou cancelados nos arquivos de transações são retirados."
+)
+
+if pending.empty:
+    st.success("Nenhuma pendência encontrada nos arquivos carregados.")
+else:
+    d1, d2, d3 = st.columns(3)
+    d1.metric("Links pendentes", len(pending))
+    d2.metric("Valor em aberto", brl(pending["Valor_num"].sum()))
+    d3.metric("Com mais de 30 dias", int((pending["Dias em aberto"] > 30).sum()))
+
+    search = st.text_input("Buscar cliente")
+    filtered = pending.copy()
+    if search:
+        filtered = filtered[
+            filtered.get("Nome", "").astype(str).str.contains(search, case=False, na=False)
+        ]
+
+    bands = st.multiselect(
+        "Faixa de atraso",
+        ["0–7", "8–15", "16–30", "31–60", "60+"],
+        default=["0–7", "8–15", "16–30", "31–60", "60+"],
     )
+    bucket = pd.cut(
+        filtered["Dias em aberto"],
+        bins=[-1, 7, 15, 30, 60, 100_000],
+        labels=["0–7", "8–15", "16–30", "31–60", "60+"],
+    )
+    filtered = filtered[bucket.isin(bands)]
 
-    if pending.empty:
-        st.success("Nenhuma pendência encontrada nos arquivos carregados.")
-    else:
-        d1, d2, d3 = st.columns(3)
-        d1.metric("Links pendentes", len(pending))
-        d2.metric("Valor em aberto", brl(pending["Valor_num"].sum()))
-        d3.metric("Com mais de 30 dias", int((pending["Dias em aberto"] > 30).sum()))
-
-        search = st.text_input("Buscar cliente")
-        filtered = pending.copy()
-        if search:
-            filtered = filtered[
-                filtered.get("Nome", "").astype(str).str.contains(search, case=False, na=False)
-            ]
-
-        bands = st.multiselect(
-            "Faixa de atraso",
-            ["0–7", "8–15", "16–30", "31–60", "60+"],
-            default=["0–7", "8–15", "16–30", "31–60", "60+"],
-        )
-        bucket = pd.cut(
-            filtered["Dias em aberto"],
-            bins=[-1, 7, 15, 30, 60, 100_000],
-            labels=["0–7", "8–15", "16–30", "31–60", "60+"],
-        )
-        filtered = filtered[bucket.isin(bands)]
-
-        summary_tab, detail_tab = st.tabs(["Resumo por pessoa", "Detalhe por link"])
-        with summary_tab:
-            if "Nome" in filtered.columns:
-                person = (
-                    filtered.groupby("Nome", dropna=False)
-                    .agg(
-                        Pendências=("Link ID", "count"),
-                        Valor_em_aberto=("Valor_num", "sum"),
-                        Pendência_mais_recente=("Data", "max"),
-                        Maior_atraso=("Dias em aberto", "max"),
-                    )
-                    .reset_index()
-                    .sort_values("Pendência_mais_recente", ascending=False)
+    summary_tab, detail_tab = st.tabs(["Resumo por pessoa", "Detalhe por link"])
+    with summary_tab:
+        if "Nome" in filtered.columns:
+            person = (
+                filtered.groupby("Nome", dropna=False)
+                .agg(
+                    Pendências=("Link ID", "count"),
+                    Valor_em_aberto=("Valor_num", "sum"),
+                    Pendência_mais_recente=("Data", "max"),
+                    Maior_atraso=("Dias em aberto", "max"),
                 )
-                person["Valor em aberto"] = person["Valor_em_aberto"].map(brl)
-                person = person.rename(
-                    columns={
-                        "Nome": "Cliente",
-                        "Pendência_mais_recente": "Pendência mais recente",
-                        "Maior_atraso": "Maior atraso (dias)",
-                    }
-                )
-                st.dataframe(
-                    person[
-                        [
-                            "Cliente",
-                            "Pendências",
-                            "Valor em aberto",
-                            "Pendência mais recente",
-                            "Maior atraso (dias)",
-                        ]
-                    ],
-                    use_container_width=True,
-                    hide_index=True,
-                )
-        with detail_tab:
-            columns = [
-                column
-                for column in ["ID", "Nome", "Valor", "Usuário", "Data", "Dias em aberto"]
-                if column in filtered.columns
-            ]
+                .reset_index()
+                .sort_values("Pendência_mais_recente", ascending=False)
+            )
+            person["Valor em aberto"] = person["Valor_em_aberto"].map(brl)
+            person = person.rename(
+                columns={
+                    "Nome": "Cliente",
+                    "Pendência_mais_recente": "Pendência mais recente",
+                    "Maior_atraso": "Maior atraso (dias)",
+                }
+            )
             st.dataframe(
-                filtered[columns].sort_values("Data", ascending=False),
+                person[
+                    [
+                        "Cliente",
+                        "Pendências",
+                        "Valor em aberto",
+                        "Pendência mais recente",
+                        "Maior atraso (dias)",
+                    ]
+                ],
                 use_container_width=True,
                 hide_index=True,
             )
+    with detail_tab:
+        columns = [
+            column
+            for column in ["ID", "Nome", "Valor", "Usuário", "Data", "Dias em aberto"]
+            if column in filtered.columns
+        ]
+        st.dataframe(
+            filtered[columns].sort_values("Data", ascending=False),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 elif page == "Condomínios":
     st.subheader("Recuperações por condomínio")
