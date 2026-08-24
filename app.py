@@ -183,107 +183,158 @@ def _load_access_log() -> pd.DataFrame:
 
 
 
-    def require_login() -> None:
-        auth = _load_auth()
+def require_login() -> None:
+    auth = _load_auth()
 
-        if not auth.get("users"):
-            st.title("🔐 Configurar acesso ao Monitoramento")
-            st.info(
-                "Primeiro acesso: configure os acessos. "
-                "As senhas são armazenadas somente como hash, não em texto aberto."
+    # PRIMEIRO ACESSO - CRIAR TODAS AS SENHAS
+    if not auth.get("users"):
+        st.title("🔐 Configurar acesso ao Monitoramento")
+        st.info(
+            "Primeiro acesso: configure os acessos. "
+            "As senhas são armazenadas somente como hash, não em texto aberto."
+        )
+
+        with st.form("first_setup"):
+            p_fernanda = st.text_input("Senha de Fernanda", type="password")
+            pc_fernanda = st.text_input(
+                "Confirmar senha de Fernanda",
+                type="password"
             )
-    
-            with st.form("first_setup"):
-                p_fernanda = st.text_input("Senha de Fernanda", type="password")
-            
-                pc_fernanda = st.text_input("Confirmar senha de Fernanda", type="password")
-    
-                p_joao = st.text_input("Senha de João Paulo", type="password")
-                pc_joao = st.text_input("Confirmar senha de João Paulo", type="password")
-    
-                p_kawany = st.text_input("Senha de Kawany", type="password")
-                pc_kawany = st.text_input("Confirmar senha de Kawany", type="password")
-    
-                p_camilli = st.text_input("Senha de Camilli", type="password")
-                pc_camilli = st.text_input("Confirmar senha de Camilli", type="password")
-    
-                p_vitoria = st.text_input("Senha de Vitória", type="password")
-                pc_vitoria = st.text_input("Confirmar senha de Vitória", type="password")
-    
-                submit = st.form_submit_button("Salvar acessos")
-    
-            if submit:
-                senhas = {
-                    "fernanda": (p_fernanda, pc_fernanda),
-                    "joao paulo": (p_joao, pc_joao),
-                    "kawany": (p_kawany, pc_kawany),
-                    "camilli": (p_camilli, pc_camilli),
-                    "vitoria": (p_vitoria, pc_vitoria),
-                }
-    
-                if any(len(senha) < 6 for senha, confirmacao in senhas.values()):
-                    st.error("Todas as senhas devem ter pelo menos 6 caracteres.")
-    
-                elif any(senha != confirmacao for senha, confirmacao in senhas.values()):
-                    st.error("Uma ou mais confirmações de senha não coincidem.")
-    
-                else:
-                    data = {
-                        "users": {
-                            "fernanda": {
-                                "display": "Fernanda",
-                                "role": "admin",
-                                **_hash_password(p_fernanda),
-                            },
-                            "joao paulo": {
-                                "display": "João Paulo",
-                                "role": "full",
-                                **_hash_password(p_joao),
-                            },
-                            "kawany": {
-                                "display": "Kawany",
-                                "role": "full",
-                                **_hash_password(p_kawany),
-                            },
-                            "camilli": {
-                                "display": "Camilli",
-                                "role": "devedores",
-                                **_hash_password(p_camilli),
-                            },
-                            "vitoria": {
-                                "display": "Vitória",
-                                "role": "devedores",
-                                **_hash_password(p_vitoria),
-                            },
-                        }
+
+            p_joao = st.text_input("Senha de João Paulo", type="password")
+            pc_joao = st.text_input(
+                "Confirmar senha de João Paulo",
+                type="password"
+            )
+
+            p_kawany = st.text_input("Senha de Kawany", type="password")
+            pc_kawany = st.text_input(
+                "Confirmar senha de Kawany",
+                type="password"
+            )
+
+            p_camilli = st.text_input("Senha de Camilli", type="password")
+            pc_camilli = st.text_input(
+                "Confirmar senha de Camilli",
+                type="password"
+            )
+
+            p_vitoria = st.text_input("Senha de Vitória", type="password")
+            pc_vitoria = st.text_input(
+                "Confirmar senha de Vitória",
+                type="password"
+            )
+
+            submit = st.form_submit_button("Salvar acessos")
+
+        if submit:
+            senhas = {
+                "fernanda": (p_fernanda, pc_fernanda),
+                "joao paulo": (p_joao, pc_joao),
+                "kawany": (p_kawany, pc_kawany),
+                "camilli": (p_camilli, pc_camilli),
+                "vitoria": (p_vitoria, pc_vitoria),
+            }
+
+            if any(
+                len(senha) < 6
+                for senha, confirmacao in senhas.values()
+            ):
+                st.error(
+                    "Todas as senhas devem ter pelo menos 6 caracteres."
+                )
+
+            elif any(
+                senha != confirmacao
+                for senha, confirmacao in senhas.values()
+            ):
+                st.error(
+                    "Uma ou mais confirmações de senha não coincidem."
+                )
+
+            else:
+                data = {
+                    "users": {
+                        "fernanda": {
+                            "display": "Fernanda",
+                            "role": "admin",
+                            **_hash_password(p_fernanda),
+                        },
+                        "joao paulo": {
+                            "display": "João Paulo",
+                            "role": "full",
+                            **_hash_password(p_joao),
+                        },
+                        "kawany": {
+                            "display": "Kawany",
+                            "role": "full",
+                            **_hash_password(p_kawany),
+                        },
+                        "camilli": {
+                            "display": "Camilli",
+                            "role": "devedores",
+                            **_hash_password(p_camilli),
+                        },
+                        "vitoria": {
+                            "display": "Vitória",
+                            "role": "devedores",
+                            **_hash_password(p_vitoria),
+                        },
                     }
-    
+                }
+
                 _save_auth(data)
                 st.success("Todos os acessos foram criados com sucesso.")
                 st.rerun()
-    
-            st.stop()
 
-   
+        st.stop()
 
+    # LOGIN
     if not st.session_state.get("authenticated"):
         st.title("🔐 Monitoramento")
         st.caption("Acesso restrito")
+
         with st.form("login_form"):
             username = st.text_input("Usuário")
             password = st.text_input("Senha", type="password")
             submitted = st.form_submit_button("Entrar")
+
         if submitted:
             key = strip_accents(username)
             record = auth.get("users", {}).get(key)
+
             if record and _verify_password(password, record):
                 display = record.get("display", username)
+
                 st.session_state["authenticated"] = True
                 st.session_state["login_user"] = key
                 st.session_state["login_display"] = display
                 st.session_state["login_role"] = record.get("role", "full")
+
                 _register_access(key, display)
                 st.rerun()
+
+            else:
+                st.error("Usuário ou senha inválidos.")
+
+        st.stop()
+
+    # USUÁRIO JÁ LOGADO
+    with st.sidebar:
+        st.caption(
+            f"Conectado como **{st.session_state.get('login_display', '')}**"
+        )
+
+        if st.button("Sair", use_container_width=True):
+            for k in (
+                "authenticated",
+                "login_user",
+                "login_display",
+                "login_role",
+            ):
+                st.session_state.pop(k, None)
+
+            st.rerun()
             else:
                 st.error("Usuário ou senha inválidos.")
         st.stop()
