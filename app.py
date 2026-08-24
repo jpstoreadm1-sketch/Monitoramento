@@ -986,16 +986,26 @@ elif page == "Produtividade":
         )
         selected_months = [month_label_to_code[label] for label in selected_month_labels]
 
-        filter_cols = st.columns(3)
+               filter_cols = st.columns(3)
         collaborators = list(USER_DISPLAY.values())
+
         selected_collaborators = filter_cols[0].multiselect(
-            "Colaboradora", collaborators, default=collaborators, key="prod_users"
+            "Colaboradora",
+            collaborators,
+            default=collaborators,
+            key="prod_users",
         )
+
         status_options = ["Pago", "Pendente", "Cancelado"]
+
         selected_status = filter_cols[1].multiselect(
-            "Status", status_options, default=status_options, key="prod_status"
+            "Status",
+            status_options,
+            default=status_options,
+            key="prod_status",
         )
-       condominium_options = [
+
+        condominium_options = [
     "GOWORK",
     "GRAND CLUB SC",
     "VIVA MAIS",
