@@ -995,7 +995,7 @@ elif page == "Produtividade":
         selected_status = filter_cols[1].multiselect(
             "Status", status_options, default=status_options, key="prod_status"
         )
-   condominium_options = [
+       condominium_options = [
     "GOWORK",
     "GRAND CLUB SC",
     "VIVA MAIS",
