@@ -1440,680 +1440,248 @@ elif page == "Recuperações":
         hide_index=True,
     )
 
-elif page == "Produtividade":
-    st.subheader("Produtividade por colaboradora")
+# ============================================================
+# PRODUTIVIDADE CORRETA
+#
+# 1) CARRINHOS FEITOS = todos os links criados no Sistema Link
+# 2) CARRINHOS PAGOS = links que possuem pagamento real
+#    nas transações
+# 3) VALOR RECUPERADO = Subtotal da transação paga
+# 4) PENDENTES = links ainda não pagos e não cancelados
+# 5) CANCELADOS = links cancelados no Sistema Link
+# ============================================================
 
-    st.caption(
-        "Regra: cada 'Pagamento efetuada (cobrança)' encontrado nas transações "
-        "representa 1 carrinho recuperado. O valor recuperado vem do Subtotal da "
-        "transação. O Sistema Link é utilizado para identificar a colaboradora."
+production_links = links_prod.copy()
+
+if production_links.empty:
+    productivity_links = pd.DataFrame()
+    pending = pd.DataFrame()
+    unlinked_payments = recovery_events.copy()
+
+else:
+    # --------------------------------------------------------
+    # BASE DE PRODUÇÃO
+    # Cada linha do Sistema Link representa 1 carrinho feito.
+    # --------------------------------------------------------
+
+    production_links["Carrinho feito"] = 1
+
+    production_links["Data criação"] = pd.to_datetime(
+        production_links["Data"],
+        errors="coerce",
     )
 
-    if productivity_links.empty:
-        st.info("Nenhum carrinho/link encontrado nos arquivos carregados.")
+    production_links["Mês criação"] = (
+        production_links["Data criação"]
+        .dt.to_period("M")
+        .astype(str)
+    )
+
+    # --------------------------------------------------------
+    # PAGAMENTOS REAIS DAS TRANSAÇÕES
+    # --------------------------------------------------------
+
+    paid_transactions = recovery_events[
+        recovery_events["Link ID"].notna()
+    ].copy()
+
+    if not paid_transactions.empty:
+
+        payment_by_link = (
+            paid_transactions
+            .groupby(
+                "Link ID",
+                as_index=False,
+                dropna=False,
+            )
+            .agg(
+                Valor_recuperado=(
+                    "Valor_recuperado",
+                    "sum",
+                ),
+                Data_pagamento=(
+                    "Data_pagamento",
+                    "max",
+                ),
+            )
+        )
+
+        payment_by_link["Pagamento encontrado"] = True
+
+        production_links = production_links.merge(
+            payment_by_link,
+            on="Link ID",
+            how="left",
+        )
 
     else:
-        # =========================================================
-        # NORMALIZAÇÃO DOS CONDOMÍNIOS
-        # =========================================================
+        production_links["Valor_recuperado"] = 0.0
+        production_links["Data_pagamento"] = pd.NaT
+        production_links["Pagamento encontrado"] = False
 
-        condominium_options = [
-            "GOWORK",
-            "GRAND CLUB SC",
-            "VIVA MAIS",
-            "ELEVATTO",
-            "IBITIRAMA",
-            "NEW LIFE",
-            "GIOIA",
-            "YOU ACLIMAÇÃO",
-            "DEZ VILA EMA",
-            "MOOV",
-            "BONJOUR",
-            "ORIGINE MOOCA",
-            "ORIGINE PISCINA",
-            "TERRAZA",
-            "LIVING WISH",
-            "LE CHAMP",
-            "VITTORIO",
-            "WELCOME",
-            "VOXY",
-            "SUPREMO",
-            "GRAND LIFE",
-            "ORIGEM",
-            "PARQUE SANTA ISABEL",
-            "GOLDEN TOWER",
-            "INSIDE",
-            "SAN MARTINO",
-            "NEXUS",
-            "SPAZIO DELLARTE",
-            "FOREVER",
-            "MORADAS DO BOSQUE",
-            "ILHAS DO HAWAII",
+    production_links["Pagamento encontrado"] = (
+        production_links["Pagamento encontrado"]
+        .fillna(False)
+        .astype(bool)
+    )
+
+    production_links["Valor_recuperado"] = (
+        pd.to_numeric(
+            production_links["Valor_recuperado"],
+            errors="coerce",
+        )
+        .fillna(0.0)
+    )
+
+    production_links["Data_pagamento"] = pd.to_datetime(
+        production_links["Data_pagamento"],
+        errors="coerce",
+    )
+
+    # --------------------------------------------------------
+    # STATUS FINAL DO CARRINHO
+    #
+    # Pagamento real sempre prevalece sobre o status do link.
+    # --------------------------------------------------------
+
+    production_links["Situação reconciliada"] = "Pendente"
+
+    production_links.loc[
+        production_links["Status_norm"].eq("cancelado"),
+        "Situação reconciliada",
+    ] = "Cancelado"
+
+    production_links.loc[
+        production_links["Pagamento encontrado"],
+        "Situação reconciliada",
+    ] = "Pago"
+
+    # --------------------------------------------------------
+    # MÊS DO RESULTADO
+    #
+    # Feito = mês de criação.
+    # Pago = mês em que o pagamento ocorreu.
+    # --------------------------------------------------------
+
+    production_links["Mês pagamento"] = (
+        production_links["Data_pagamento"]
+        .dt.to_period("M")
+        .astype(str)
+    )
+
+    production_links["Data referência"] = (
+        production_links["Data criação"]
+    )
+
+    production_links["Mês"] = (
+        production_links["Mês criação"]
+    )
+
+    paid_mask = (
+        production_links["Situação reconciliada"]
+        .eq("Pago")
+        & production_links["Data_pagamento"].notna()
+    )
+
+    production_links.loc[
+        paid_mask,
+        "Data referência",
+    ] = production_links.loc[
+        paid_mask,
+        "Data_pagamento",
+    ]
+
+    production_links.loc[
+        paid_mask,
+        "Mês",
+    ] = production_links.loc[
+        paid_mask,
+        "Mês pagamento",
+    ]
+
+    production_links["Dia"] = (
+        production_links["Data referência"]
+        .dt.normalize()
+    )
+
+    # Valor_num será usado no painel como resultado financeiro.
+    production_links["Valor_num"] = (
+        production_links["Valor_recuperado"]
+    )
+
+    # --------------------------------------------------------
+    # BASE FINAL DA PRODUTIVIDADE
+    # --------------------------------------------------------
+
+    productivity_links = production_links.copy()
+
+    # --------------------------------------------------------
+    # DEVEDORES
+    #
+    # Somente links:
+    # - não pagos nas transações
+    # - não cancelados
+    # --------------------------------------------------------
+
+    pending = productivity_links[
+        productivity_links["Situação reconciliada"]
+        .eq("Pendente")
+    ].copy()
+
+    if not pending.empty:
+
+        pending["Dias em aberto"] = (
+            TODAY
+            - pending["Data criação"].dt.normalize()
+        ).dt.days.clip(lower=0)
+
+    # --------------------------------------------------------
+    # CONFERÊNCIA DE PAGAMENTOS SEM VÍNCULO
+    #
+    # Pagamentos reais que não encontraram ID no Sistema Link.
+    # Não entram no nome de nenhuma colaboradora.
+    # --------------------------------------------------------
+
+    link_ids_system = set(
+        production_links["Link ID"]
+        .dropna()
+        .astype(str)
+    )
+
+    unlinked_payments = recovery_events[
+        ~recovery_events["Link ID"]
+        .astype(str)
+        .isin(link_ids_system)
+    ].copy()
+
+
+# ------------------------------------------------------------
+# IDs para conferência
+# ------------------------------------------------------------
+
+paid_ids = set()
+
+canceled_ids = set()
+
+if not productivity_links.empty:
+
+    paid_ids = set(
+        productivity_links.loc[
+            productivity_links["Situação reconciliada"]
+            .eq("Pago"),
+            "Link ID",
         ]
+        .dropna()
+    )
 
-        condominium_aliases = {
-            "Condomínio Grand Life Ipiranga": "GRAND LIFE",
-            "Condomínio Vittorio Emanuelle": "VITTORIO",
-            "Condomínio Spazio Dellarte": "SPAZIO DELLARTE",
-            "Condomínio Supremo Ipiranga": "SUPREMO",
-            "Condomínio Grand Club São Caetano": "GRAND CLUB SC",
-            "Condomínio Mooca Terrazza": "TERRAZA",
-            "Condomínio Le Champ": "LE CHAMP",
-            "Condomínio Origine Mooca": "ORIGINE MOOCA",
-            "Condomínio Moov": "MOOV",
-            "Condomínio Origem Tatuapé": "ORIGEM",
-            "Condomínio Ilhas do Havaí": "ILHAS DO HAWAII",
-            "Condomínio Ilhas do Hawaii": "ILHAS DO HAWAII",
-            "Condomínio Living Wish Mooca": "LIVING WISH",
-            "Condomínio Parque Santa Isabel": "PARQUE SANTA ISABEL",
-            "Condomínio Dez Vila Ema": "DEZ VILA EMA",
-            "Condomínio Viva Mais": "VIVA MAIS",
-            "Condomínio Inside Guarulhos": "INSIDE",
-            "Condomínio Forever Resort": "FOREVER",
-            "Condomínio Praça Ibitirama": "IBITIRAMA",
-        }
-
-        condo_key_aliases = {
-            "gowork": "GOWORK",
-            "grand club sc": "GRAND CLUB SC",
-            "grand club sao caetano": "GRAND CLUB SC",
-            "viva mais": "VIVA MAIS",
-            "elevatto": "ELEVATTO",
-            "ibitirama": "IBITIRAMA",
-            "praca ibitirama": "IBITIRAMA",
-            "new life": "NEW LIFE",
-            "gioia": "GIOIA",
-            "you aclimacao": "YOU ACLIMAÇÃO",
-            "dez vila ema": "DEZ VILA EMA",
-            "moov": "MOOV",
-            "bonjour": "BONJOUR",
-            "origine mooca": "ORIGINE MOOCA",
-            "origine piscina": "ORIGINE PISCINA",
-            "terraza": "TERRAZA",
-            "terrazza": "TERRAZA",
-            "mooca terrazza": "TERRAZA",
-            "living wish": "LIVING WISH",
-            "living wish mooca": "LIVING WISH",
-            "le champ": "LE CHAMP",
-            "vittorio": "VITTORIO",
-            "vittorio emanuelle": "VITTORIO",
-            "welcome": "WELCOME",
-            "voxy": "VOXY",
-            "supremo": "SUPREMO",
-            "supremo ipiranga": "SUPREMO",
-            "grand life": "GRAND LIFE",
-            "grand life ipiranga": "GRAND LIFE",
-            "origem": "ORIGEM",
-            "origem tatuape": "ORIGEM",
-            "parque santa isabel": "PARQUE SANTA ISABEL",
-            "golden tower": "GOLDEN TOWER",
-            "inside": "INSIDE",
-            "inside guarulhos": "INSIDE",
-            "san martino": "SAN MARTINO",
-            "nexus": "NEXUS",
-            "spazio dellarte": "SPAZIO DELLARTE",
-            "forever": "FOREVER",
-            "forever resort": "FOREVER",
-            "moradas do bosque": "MORADAS DO BOSQUE",
-            "ilhas do hawaii": "ILHAS DO HAWAII",
-            "ilhas do havai": "ILHAS DO HAWAII",
-        }
-
-        def normalize_condominium(value):
-            if pd.isna(value):
-                return "(Não identificado)"
-
-            text = str(value).strip()
-
-            if not text or text.lower() == "nan":
-                return "(Não identificado)"
-
-            if text in condominium_aliases:
-                return condominium_aliases[text]
-
-            if text.lower().startswith("condomínio "):
-                text = text[len("Condomínio "):].strip()
-
-            key = strip_accents(text).lower().strip()
-
-            return condo_key_aliases.get(key, text.upper())
-
-        if "Condomínio" not in productivity_links.columns:
-            productivity_links["Condomínio"] = "(Não identificado)"
-
-        productivity_links["Condomínio filtro"] = (
-            productivity_links["Condomínio"]
-            .map(normalize_condominium)
-        )
-
-        # =========================================================
-        # FILTRO DE MÊS
-        # =========================================================
-
-        available_months = sorted(
-            productivity_links["Mês"]
-            .dropna()
-            .astype(str)
-            .unique()
-            .tolist(),
-            reverse=True,
-        )
-
-        prod_month_labels = {
-            code: (
-                f"{month_names_pt[pd.Period(code).month]}/"
-                f"{str(pd.Period(code).year)[-2:]}"
-            )
-            for code in available_months
-        }
-
-        label_to_month = {
-            label: code
-            for code, label in prod_month_labels.items()
-        }
-
-        selected_month_labels = st.multiselect(
-            "Mês",
-            [prod_month_labels[m] for m in available_months],
-            default=(
-                [prod_month_labels[available_months[0]]]
-                if available_months
-                else []
-            ),
-            key="prod_months_v2",
-        )
-
-        selected_months = [
-            label_to_month[label]
-            for label in selected_month_labels
+    canceled_ids = set(
+        productivity_links.loc[
+            productivity_links["Situação reconciliada"]
+            .eq("Cancelado"),
+            "Link ID",
         ]
-
-        # =========================================================
-        # FILTROS
-        # =========================================================
-
-        filter_cols = st.columns(3)
-
-        fixed_collaborators = [
-            "Fernanda",
-            "Camilli",
-            "Vitória",
-            "Kawany",
-            "Lorrany",
-            "Thais",
-            "Não identificado",
-        ]
-
-        found_collaborators = (
-            productivity_links["Colaboradora"]
-            .dropna()
-            .astype(str)
-            .unique()
-            .tolist()
-        )
-
-        collaborator_options = fixed_collaborators.copy()
-
-        for person in found_collaborators:
-            if person not in collaborator_options:
-                collaborator_options.append(person)
-
-        selected_collaborators = filter_cols[0].multiselect(
-            "Colaboradora",
-            collaborator_options,
-            default=collaborator_options,
-            key="prod_users_v2",
-        )
-
-        status_options = [
-            "Pago",
-            "Pendente",
-            "Cancelado",
-        ]
-
-        selected_status = filter_cols[1].multiselect(
-            "Status",
-            status_options,
-            default=status_options,
-            key="prod_status_v2",
-        )
-
-        found_condominiums = (
-            productivity_links["Condomínio filtro"]
-            .dropna()
-            .astype(str)
-            .unique()
-            .tolist()
-        )
-
-        complete_condominium_options = condominium_options.copy()
-
-        for condo in found_condominiums:
-            if (
-                condo not in complete_condominium_options
-                and condo != "(Não identificado)"
-            ):
-                complete_condominium_options.append(condo)
-
-        if "(Não identificado)" in found_condominiums:
-            complete_condominium_options.append("(Não identificado)")
-
-        selected_condominiums = filter_cols[2].multiselect(
-            "Condomínio",
-            complete_condominium_options,
-            default=complete_condominium_options,
-            key="prod_condominiums_v2",
-        )
-
-        # =========================================================
-        # APLICAR FILTROS
-        # =========================================================
-
-        prod = productivity_links[
-            productivity_links["Mês"].astype(str).isin(selected_months)
-            & productivity_links["Colaboradora"].isin(selected_collaborators)
-            & productivity_links["Situação reconciliada"].isin(selected_status)
-            & productivity_links["Condomínio filtro"].isin(selected_condominiums)
-        ].copy()
-
-        if prod.empty:
-            st.warning(
-                "Nenhum carrinho/link encontrado para os filtros selecionados."
-            )
-
-        else:
-            # =====================================================
-            # MÉTRICAS
-            # =====================================================
-
-            paid_mask_prod = (
-                prod["Situação reconciliada"].eq("Pago")
-            )
-
-            pending_mask_prod = (
-                prod["Situação reconciliada"].eq("Pendente")
-            )
-
-            canceled_mask_prod = (
-                prod["Situação reconciliada"].eq("Cancelado")
-            )
-
-            recovered_count = int(paid_mask_prod.sum())
-            pending_count = int(pending_mask_prod.sum())
-            canceled_count = int(canceled_mask_prod.sum())
-
-            total_links = (
-                recovered_count
-                + pending_count
-                + canceled_count
-            )
-
-            recovered_value = float(
-                pd.to_numeric(
-                    prod.loc[paid_mask_prod, "Valor_num"],
-                    errors="coerce",
-                )
-                .fillna(0)
-                .sum()
-            )
-
-            active_total = recovered_count + pending_count
-
-            recovery_rate = (
-                recovered_count / active_total
-                if active_total > 0
-                else 0
-            )
-
-            unidentified_paid = int(
-                (
-                    paid_mask_prod
-                    & prod["Colaboradora"].eq("Não identificado")
-                ).sum()
-            )
-
-            unidentified_value = float(
-                pd.to_numeric(
-                    prod.loc[
-                        paid_mask_prod
-                        & prod["Colaboradora"].eq("Não identificado"),
-                        "Valor_num",
-                    ],
-                    errors="coerce",
-                )
-                .fillna(0)
-                .sum()
-            )
-
-            k1, k2, k3, k4, k5 = st.columns(5)
-
-            k1.metric(
-                "Carrinhos/links",
-                total_links,
-            )
-
-            k2.metric(
-                "Recuperados",
-                recovered_count,
-            )
-
-            k3.metric(
-                "Pendentes",
-                pending_count,
-            )
-
-            k4.metric(
-                "Valor recuperado",
-                br1(recovered_value),
-            )
-
-            k5.metric(
-                "Taxa de recuperação",
-                f"{recovery_rate:.1%}".replace(".", ","),
-            )
-
-            if unidentified_paid > 0:
-                st.warning(
-                    f"{unidentified_paid} carrinho(s) recuperado(s), "
-                    f"somando {br1(unidentified_value)}, ainda não puderam "
-                    "ser associados a uma colaboradora. Eles continuam "
-                    "incluídos no total recuperado."
-                )
-
-            # =====================================================
-            # RESUMO POR COLABORADORA
-            # =====================================================
-
-            summary_rows = []
-
-            for person in collaborator_options:
-                person_df = prod[
-                    prod["Colaboradora"].eq(person)
-                ].copy()
-
-                person_paid = (
-                    person_df["Situação reconciliada"]
-                    .eq("Pago")
-                )
-
-                person_pending = (
-                    person_df["Situação reconciliada"]
-                    .eq("Pendente")
-                )
-
-                person_canceled = (
-                    person_df["Situação reconciliada"]
-                    .eq("Cancelado")
-                )
-
-                person_recovered = int(person_paid.sum())
-                person_pending_count = int(person_pending.sum())
-                person_canceled_count = int(person_canceled.sum())
-
-                person_total = (
-                    person_recovered
-                    + person_pending_count
-                    + person_canceled_count
-                )
-
-                person_value = float(
-                    pd.to_numeric(
-                        person_df.loc[
-                            person_paid,
-                            "Valor_num",
-                        ],
-                        errors="coerce",
-                    )
-                    .fillna(0)
-                    .sum()
-                )
-
-                person_active = (
-                    person_recovered
-                    + person_pending_count
-                )
-
-                person_rate = (
-                    person_recovered / person_active
-                    if person_active > 0
-                    else 0
-                )
-
-                valid_dates = (
-                    person_df["Data referência"]
-                    .dropna()
-                )
-
-                if not valid_dates.empty:
-                    date_min = valid_dates.min().normalize()
-                    date_max = valid_dates.max().normalize()
-
-                    active_days = max(
-                        (date_max - date_min).days + 1,
-                        1,
-                    )
-                else:
-                    active_days = 1
-
-                average_day = (
-                    person_total / active_days
-                )
-
-                summary_rows.append({
-                    "Colaboradora": person,
-                    "Carrinhos": person_total,
-                    "Recuperados": person_recovered,
-                    "Pendentes": person_pending_count,
-                    "Cancelados": person_canceled_count,
-                    "Recuperado identificado": br1(person_value),
-                    "Taxa de recuperação": (
-                        f"{person_rate:.1%}"
-                        .replace(".", ",")
-                    ),
-                    "Média/dia": (
-                        f"{average_day:.2f}"
-                        .replace(".", ",")
-                    ),
-                })
-
-            summary_df = pd.DataFrame(summary_rows)
-
-            st.dataframe(
-                summary_df,
-                use_container_width=True,
-                hide_index=True,
-            )
-
-            # =====================================================
-            # GRÁFICO
-            # =====================================================
-
-            st.subheader("Carrinhos por colaboradora")
-
-            chart_df = (
-                summary_df[
-                    ["Colaboradora", "Carrinhos"]
-                ]
-                .copy()
-            )
-
-            chart_df = chart_df[
-                chart_df["Carrinhos"] > 0
-            ]
-
-            if not chart_df.empty:
-                chart = px.bar(
-                    chart_df,
-                    x="Colaboradora",
-                    y="Carrinhos",
-                    text="Carrinhos",
-                )
-
-                chart.update_layout(
-                    height=390,
-                    xaxis_title="",
-                    yaxis_title="Carrinhos/links",
-                )
-
-                st.plotly_chart(
-                    chart,
-                    use_container_width=True,
-                )
-
-            # =====================================================
-            # DETALHAMENTO
-            # =====================================================
-
-            st.subheader(
-                "Clientes e carrinhos por colaboradora"
-            )
-
-            all_tab, recovered_tab, pending_tab, canceled_tab = st.tabs(
-                [
-                    "Todos",
-                    "Recuperados",
-                    "Pendentes",
-                    "Cancelados",
-                ]
-            )
-
-            def build_prod_detail(frame):
-                frame = frame.copy()
-
-                columns_map = {
-                    "Data referência": "Data",
-                    "Colaboradora": "Colaboradora",
-                    "Cliente": "Cliente",
-                    "Condomínio filtro": "Condomínio",
-                    "Situação reconciliada": "Status",
-                    "Valor_num": "Valor",
-                    "Link ID": "ID do link",
-                }
-
-                existing = [
-                    c
-                    for c in columns_map
-                    if c in frame.columns
-                ]
-
-                detail = frame[existing].copy()
-
-                detail = detail.rename(
-                    columns=columns_map
-                )
-
-                if "Data" in detail.columns:
-                    detail["Data"] = (
-                        pd.to_datetime(
-                            detail["Data"],
-                            errors="coerce",
-                        )
-                        .dt.strftime("%d/%m/%Y")
-                    )
-
-                if "Valor" in detail.columns:
-                    detail["Valor"] = (
-                        pd.to_numeric(
-                            detail["Valor"],
-                            errors="coerce",
-                        )
-                        .fillna(0)
-                        .map(br1)
-                    )
-
-                return detail
-
-            with all_tab:
-                st.dataframe(
-                    build_prod_detail(prod),
-                    use_container_width=True,
-                    hide_index=True,
-                )
-
-            with recovered_tab:
-                recovered_detail = prod[
-                    prod["Situação reconciliada"]
-                    .eq("Pago")
-                ]
-
-                st.dataframe(
-                    build_prod_detail(
-                        recovered_detail
-                    ),
-                    use_container_width=True,
-                    hide_index=True,
-                )
-
-            with pending_tab:
-                pending_detail = prod[
-                    prod["Situação reconciliada"]
-                    .eq("Pendente")
-                ]
-
-                st.dataframe(
-                    build_prod_detail(
-                        pending_detail
-                    ),
-                    use_container_width=True,
-                    hide_index=True,
-                )
-
-            with canceled_tab:
-                canceled_detail = prod[
-                    prod["Situação reconciliada"]
-                    .eq("Cancelado")
-                ]
-
-                st.dataframe(
-                    build_prod_detail(
-                        canceled_detail
-                    ),
-                    use_container_width=True,
-                    hide_index=True,
-                )
-
-            # =====================================================
-            # EVOLUÇÃO DIÁRIA
-            # =====================================================
-
-            st.subheader("Evolução diária")
-
-            daily_base = prod[
-                prod["Situação reconciliada"]
-                .eq("Pago")
-            ].copy()
-
-            if not daily_base.empty:
-                daily = (
-                    daily_base
-                    .groupby(
-                        ["Dia", "Colaboradora"],
-                        dropna=False,
-                    )
-                    .size()
-                    .reset_index(
-                        name="Carrinhos"
-                    )
-                )
-
-                daily_chart = px.line(
-                    daily,
-                    x="Dia",
-                    y="Carrinhos",
-                    color="Colaboradora",
-                    markers=True,
-                )
-
-                daily_chart.update_layout(
-                    height=420,
-                    xaxis_title="",
-                    yaxis_title="Carrinhos recuperados",
-                )
-
-                st.plotly_chart(
-                    daily_chart,
-                    use_container_width=True,
-                )
+        .dropna()
+    )
 if page == "Devedores":
     st.subheader("Pessoas que ainda precisam ser cobradas")
     st.caption(
