@@ -1317,7 +1317,7 @@ else:
             hide_index=True,
         )
 
-elif page == "Condomínios":
+if page == "Condomínios":
     st.subheader("Recuperações por condomínio")
     if "PDX" not in recovered.columns:
         st.info("O campo de condomínio não foi encontrado.")
