@@ -1066,23 +1066,23 @@ productivity_links["Condomínio filtro"] = (
     .replace(condominium_aliases)
 )
 
-        selected_condominiums = filter_cols[2].multiselect(
-            "Condomínio",
-            condominium_options,
-            default=condominium_options,
-            key="prod_condominiums",
-        )
+selected_condominiums = filter_cols[2].multiselect(
+    "Condomínio",
+    condominium_options,
+    default=condominium_options,
+    key="prod_condominiums",
+)
 
-        prod = productivity_links[
-            (productivity_links["Mês"].isin(selected_months))
-            & (productivity_links["Colaboradora"].isin(selected_collaborators))
-            & (productivity_links["Situação reconciliada"].isin(selected_status))
-            & (productivity_links["Condomínio filtro"].isin(selected_condominiums))
-        ].copy()
+prod = productivity_links[
+    (productivity_links["Mês"].isin(selected_months))
+    & (productivity_links["Colaboradora"].isin(selected_collaborators))
+    & (productivity_links["Situação reconciliada"].isin(selected_status))
+    & (productivity_links["Condomínio filtro"].isin(selected_condominiums))
+].copy()
 
-        if prod.empty:
-            st.warning("Nenhum carrinho/link encontrado para os filtros selecionados.")
-        else:
+if prod.empty:
+    st.warning("Nenhum carrinho/link encontrado para os filtros selecionados.")
+else:
             date_min = prod["Data referência"].min().normalize()
             date_max = prod["Data referência"].max().normalize()
             active_days = max((date_max - date_min).days + 1, 1)
