@@ -994,10 +994,68 @@ elif page == "Produtividade":
         status_options = ["Pago", "Pendente", "Cancelado"]
         selected_status = filter_cols[1].multiselect(
             "Status", status_options, default=status_options, key="prod_status"
-        )
-        condominium_options = sorted(
-            productivity_links["Condomínio filtro"].dropna().astype(str).unique().tolist()
-        )
+        
+   condominium_options = [
+    "GOWORK",
+    "GRAND CLUB SC",
+    "VIVA MAIS",
+    "ELEVATTO",
+    "IBITIRAMA",
+    "NEW LIFE",
+    "GIOIA",
+    "YOU ACLIMAÇÃO",
+    "DEZ VILA EMA",
+    "MOOV",
+    "BONJOUR",
+    "ORIGINE MOOCA",
+    "ORIGINE PISCINA",
+    "TERRAZA",
+    "LIVING WISH",
+    "LE CHAMP",
+    "VITTORIO",
+    "WELCOME",
+    "VOXY",
+    "SUPREMO",
+    "GRAND LIFE",
+    "ORIGEM",
+    "PARQUE SANTA ISABEL",
+    "GOLDEN TOWER",
+    "INSIDE",
+    "SAN MARTINO",
+    "NEXUS",
+    "SPAZIO DELLARTE",
+    "FOREVER",
+    "MORADAS DO BOSQUE",
+    "ILHAS DO HAWAII",
+]
+
+condominium_aliases = {
+    "Condomínio Grand Life Ipiranga": "GRAND LIFE",
+    "Condomínio Vittorio Emanuelle": "VITTORIO",
+    "Condomínio Spazio Dellarte": "SPAZIO DELLARTE",
+    "Condomínio Supremo Ipiranga": "SUPREMO",
+    "Condomínio Grand Club São Caetano": "GRAND CLUB SC",
+    "Condomínio Mooca Terraza": "TERRAZA",
+    "Condomínio Le Champ": "LE CHAMP",
+    "Condomínio Origine Mooca": "ORIGINE MOOCA",
+    "Condomínio Moov": "MOOV",
+    "Condomínio Origem Tatuapé": "ORIGEM",
+    "Condomínio Ilhas do Havaí": "ILHAS DO HAWAII",
+    "Condomínio Ilhas do Hawaii": "ILHAS DO HAWAII",
+    "Condomínio Living Wish Mooca": "LIVING WISH",
+    "Condomínio Parque Santa Isabel": "PARQUE SANTA ISABEL",
+    "Condomínio Dez Vila Ema": "DEZ VILA EMA",
+    "Condomínio Viva Mais": "VIVA MAIS",
+    "Condomínio Inside Guarulhos": "INSIDE",
+    "Condomínio Forever Resort": "FOREVER",
+    "Condomínio Praça Ibitirama": "IBITIRAMA",
+}
+
+productivity_links["Condomínio filtro"] = (
+    productivity_links["Condomínio filtro"]
+    .replace(condominium_aliases)
+)
+
         selected_condominiums = filter_cols[2].multiselect(
             "Condomínio",
             condominium_options,
