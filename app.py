@@ -986,7 +986,7 @@ elif page == "Produtividade":
         )
         selected_months = [month_label_to_code[label] for label in selected_month_labels]
 
-               filter_cols = st.columns(3)
+        filter_cols = st.columns(3)
         collaborators = list(USER_DISPLAY.values())
 
         selected_collaborators = filter_cols[0].multiselect(
