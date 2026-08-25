@@ -49,7 +49,8 @@ MONITORED_USERS = {
 USER_DISPLAY = {
     "fernanda dos anjos moraes silva": "Fernanda",
     "camilli de jesus": "Camilli",
-    "vitoria assuncao marcelino": "Vitoria",
+    "vitoria assuncao marcelino"
+: "Vitoria",
     "kawany goncalves silveira": "Kawany",
     "lorrany isabelly da silva": "Lorrany",
     "thais roberta melo de souza": "Thais",
