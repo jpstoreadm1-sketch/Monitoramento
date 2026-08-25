@@ -138,7 +138,7 @@ def _load_auth() -> dict:
         ("joao paulo", "João Paulo", "SENHA_JOAO_PAULO", "full"),
         ("kawany", "Kawany", "SENHA_KAWANY", "full"),
         ("camilli", "Camilli", "SENHA_CAMILLI", "devedores"),
-        ("vitoria", "Vitória", "SENHA_VITORIA", "devedores"),
+        ("vitoria", "Vitoria", "SENHA_VITORIA", "devedores"),
     ]
 
     users = {}
@@ -231,9 +231,9 @@ def require_login() -> None:
                 type="password"
             )
 
-            p_vitoria = st.text_input("Senha de Vitória", type="password")
+            p_vitoria = st.text_input("Senha de Vitoria", type="password")
             pc_vitoria = st.text_input(
-                "Confirmar senha de Vitória",
+                "Confirmar senha de Vitoria",
                 type="password"
             )
 
@@ -288,7 +288,7 @@ def require_login() -> None:
                             **_hash_password(p_camilli),
                         },
                         "vitoria": {
-                            "display": "Vitória",
+                            "display": "Vitoria",
                             "role": "devedores",
                             **_hash_password(p_vitoria),
                         },
@@ -1687,7 +1687,7 @@ if page == "Produtividade":
     colaboradores_prod = [
         "Fernanda",
         "Camilli",
-        "Vitória",
+        "Vitoria",
         "Kawany",
         "Lorrany",
         "Thais",
